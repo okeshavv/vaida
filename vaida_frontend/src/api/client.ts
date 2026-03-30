@@ -33,7 +33,8 @@ import { offlineQueue } from '../lib/offlineQueue';
 
 // ─── Config ──────────────────────────────────────────────────
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
-const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== 'false';
+// Mocks are OFF by default. Set VITE_USE_MOCKS=true in .env.development to enable.
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 // ─── Axios Instance ──────────────────────────────────────────
 const api: AxiosInstance = axios.create({

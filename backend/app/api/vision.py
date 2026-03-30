@@ -2,8 +2,14 @@
 VAIDA Vision API — /image/* endpoints.
 GPT-4o Vision image analysis for wound, rash, eye, skin conditions.
 """
+import logging
+import os
+import re
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models.db_models import Patient, IntakeSession, ImageAnalysis
 from app.schemas.image import ImageAnalyseResponse, ImageDetailResponse
@@ -11,8 +17,13 @@ from app.dependencies import get_current_user
 from app.ai.vision_engine import analyse_image_local, analyse_image_gpt
 from app.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter(prefix="/image", tags=["Image Diagnosis"])
+
+# Allowed file extensions (basic allowlist)
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+VALID_IMAGE_TYPES = {"wound", "rash", "eye", "skin"}
 
 
 def _get_openai_client():
@@ -20,11 +31,31 @@ def _get_openai_client():
         try:
             import openai
             return openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to init OpenAI client: %s", exc)
     return None
 
-VALID_IMAGE_TYPES = {"wound", "rash", "eye", "skin"}
+
+def _safe_filename(filename: str) -> str:
+    """Strip path traversal and non-alphanumeric chars from a filename."""
+    name = Path(filename).name  # strip any directory part
+    name = re.sub(r"[^\w.\-]", "_", name)
+    return name or "upload"
+
+
+def _save_image(session_id: str, filename: str, data: bytes) -> str:
+    """
+    Persist image bytes to disk under UPLOADS_DIR/{session_id}/.
+    Returns the relative path stored in the DB.
+    """
+    upload_dir = Path(settings.UPLOADS_DIR) / session_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_filename(filename)
+    dest = upload_dir / safe_name
+    dest.write_bytes(data)
+    rel_path = str(dest)
+    logger.info("Image saved: %s (%d bytes)", rel_path, len(data))
+    return rel_path
 
 
 @router.post("/analyse", response_model=ImageAnalyseResponse, status_code=201)
@@ -51,10 +82,20 @@ async def analyse_image_endpoint(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # ── Validate file extension ──
+    ext = Path(image.filename or "").suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+        )
+
     # ── Read image ──
     image_bytes = await image.read()
     if len(image_bytes) == 0:
         raise HTTPException(status_code=400, detail="Empty image file")
+    if len(image_bytes) > 10 * 1024 * 1024:  # 10 MB limit
+        raise HTTPException(status_code=413, detail="Image file too large (max 10 MB)")
 
     # ── Analyse: GPT-4o Vision if key set, local fallback otherwise ──
     openai_client = _get_openai_client()
@@ -63,11 +104,14 @@ async def analyse_image_endpoint(
     else:
         result = analyse_image_local(image_type)
 
+    # ── Save image to disk ──
+    saved_path = _save_image(session_id, image.filename or "upload", image_bytes)
+
     # ── Persist ──
     analysis = ImageAnalysis(
         session_id=session_id,
         image_type=image_type,
-        image_url_encrypted=f"encrypted://images/{session_id}/{image.filename}",
+        image_url_encrypted=saved_path,
         findings=result["visible_findings"],
         diagnosis_category=result["diagnosis_category"],
         urgency_indicator=result["urgency_indicator"],

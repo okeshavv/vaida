@@ -64,6 +64,25 @@ def get_brief(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # ── Ownership check ──
+    # Doctors can only access briefs assigned to them (or not yet assigned).
+    # ASHA workers can access briefs in their district.
+    existing_brief = db.query(DoctorBrief).filter(DoctorBrief.session_id == session_id).first()
+    if existing_brief and existing_brief.doctor_id != current_user.id:
+        if current_user.role == "doctor":
+            raise HTTPException(
+                status_code=403,
+                detail="This brief is assigned to a different doctor",
+            )
+        # ASHA workers: check district match
+        if current_user.role == "asha":
+            patient = db.query(Patient).filter(Patient.id == session.patient_id).first()
+            if patient and patient.district != current_user.district:
+                raise HTTPException(
+                    status_code=403,
+                    detail="ASHA workers can only view briefs for patients in their district",
+                )
+
     # ── Get triage result ──
     triage = db.query(TriageResult).filter(TriageResult.session_id == session_id).first()
     if not triage:
@@ -152,6 +171,11 @@ def download_brief_pdf(
     session = db.query(IntakeSession).filter(IntakeSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # ── Ownership check ──
+    existing_brief = db.query(DoctorBrief).filter(DoctorBrief.session_id == session_id).first()
+    if existing_brief and existing_brief.doctor_id != current_user.id and current_user.role == "doctor":
+        raise HTTPException(status_code=403, detail="This brief is assigned to a different doctor")
 
     triage = db.query(TriageResult).filter(TriageResult.session_id == session_id).first()
     if not triage:

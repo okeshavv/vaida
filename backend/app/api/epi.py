@@ -20,6 +20,62 @@ from app.config import get_settings
 settings = get_settings()
 router = APIRouter(prefix="/epi", tags=["Epidemiological Alerts"])
 
+# ── Static district → (lat, lng) lookup for major Indian districts ──────────
+# Source: approximate centroids; extend as needed for production.
+DISTRICT_COORDS: dict[str, tuple[float, float]] = {
+    # Rajasthan
+    "jaipur": (26.9124, 75.7873),
+    "jodhpur": (26.2389, 73.0243),
+    "kota": (25.2138, 75.8648),
+    "udaipur": (24.5854, 73.7125),
+    "ajmer": (26.4499, 74.6399),
+    "bikaner": (28.0229, 73.3119),
+    "alwar": (27.5530, 76.6346),
+    "bharatpur": (27.2152, 77.5030),
+    "jaipur rural": (26.9124, 75.7873),
+    # Maharashtra
+    "mumbai": (19.0760, 72.8777),
+    "pune": (18.5204, 73.8567),
+    "nagpur": (21.1458, 79.0882),
+    "nashik": (19.9975, 73.7898),
+    "aurangabad": (19.8762, 75.3433),
+    # Delhi
+    "delhi": (28.6139, 77.2090),
+    # Karnataka
+    "bengaluru": (12.9716, 77.5946),
+    "mysuru": (12.2958, 76.6394),
+    "mangaluru": (12.9141, 74.8560),
+    # Tamil Nadu
+    "chennai": (13.0827, 80.2707),
+    "coimbatore": (11.0168, 76.9558),
+    "madurai": (9.9252, 78.1198),
+    # Uttar Pradesh
+    "lucknow": (26.8467, 80.9462),
+    "kanpur": (26.4499, 80.3319),
+    "agra": (27.1767, 78.0081),
+    "varanasi": (25.3176, 82.9739),
+    # Gujarat
+    "ahmedabad": (23.0225, 72.5714),
+    "surat": (21.1702, 72.8311),
+    "vadodara": (22.3072, 73.1812),
+    # West Bengal
+    "kolkata": (22.5726, 88.3639),
+    # Telangana
+    "hyderabad": (17.3850, 78.4867),
+    # Kerala
+    "thiruvananthapuram": (8.5241, 76.9366),
+    "kochi": (9.9312, 76.2673),
+}
+
+
+def _get_district_coords(district: str) -> list[float]:
+    """Return [lng, lat] for a district name (GeoJSON format). Falls back to [0,0]."""
+    key = (district or "").lower().strip()
+    coords = DISTRICT_COORDS.get(key)
+    if coords:
+        return [coords[1], coords[0]]  # GeoJSON: [lng, lat]
+    return [0.0, 0.0]
+
 
 @router.get("/clusters", response_model=ClustersResponse)
 def get_clusters(
@@ -143,7 +199,7 @@ def get_dashboard(
             },
             "geometry": {
                 "type": "Point",
-                "coordinates": [0, 0],  # Production: geocode district
+                "coordinates": _get_district_coords(e.district),
             },
         })
         timeseries.append({

@@ -2,9 +2,13 @@
 VAIDA Vision Engine — Image analysis via GPT-4o Vision or local fallback.
 """
 import json
+import logging
 import base64
 from typing import Optional
+
 from app.ai.prompts import VISION_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 def analyse_image_local(image_type: str) -> dict:
@@ -68,6 +72,8 @@ async def analyse_image_gpt(
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())
+        logger.warning("GPT-4o Vision returned non-JSON response for image_type=%s; using local fallback", image_type)
         return analyse_image_local(image_type)
-    except Exception:
+    except Exception as exc:
+        logger.error("GPT-4o Vision analysis failed for image_type=%s: %s; using local fallback", image_type, exc)
         return analyse_image_local(image_type)

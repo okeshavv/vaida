@@ -9,7 +9,6 @@ Logic (from wireframe):
   4. Return GREEN | AMBER | RED
 """
 from typing import Tuple, List
-import random
 
 
 # ═══════════════════════════════════════════════════════════
@@ -121,10 +120,9 @@ def classify_urgency(symptoms: dict) -> dict:
     # ── Step 2: ML model prediction (simulated with heuristics) ──
     severity_score = compute_severity_score(symptoms)
 
-    # Simulate ML confidence (in production, this calls the MIMIC-III model)
-    # For hackathon: use heuristic score + small random noise
-    noise = random.uniform(-0.05, 0.05)
-    confidence = min(max(severity_score + noise, 0.0), 1.0)
+    # Confidence = severity score directly (deterministic).
+    # Production: replace with actual MIMIC-III model inference.
+    confidence = severity_score
 
     # Classify based on severity score
     if severity_score >= 0.70:

@@ -2,9 +2,13 @@
 VAIDA NLP Engine — Symptom extraction using GPT-4o or local fallback.
 """
 import json
+import logging
 import re
 from typing import Optional
+
 from app.ai.prompts import SYMPTOM_NLP_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 def extract_symptoms_local(patient_input: str, lang: str = "en") -> dict:
@@ -129,6 +133,8 @@ async def extract_symptoms_gpt(patient_input: str, openai_client=None) -> dict:
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())
+        logger.warning("GPT-4o NLP returned non-JSON response; using local fallback")
         return extract_symptoms_local(patient_input)
-    except Exception:
+    except Exception as exc:
+        logger.error("GPT-4o NLP extraction failed: %s; using local fallback", exc)
         return extract_symptoms_local(patient_input)

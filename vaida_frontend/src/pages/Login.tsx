@@ -237,6 +237,8 @@ export default function Login() {
                         <button
                           onClick={() => handleDemoLogin(demo)}
                           disabled={demoLoading !== null}
+                          aria-label={`Login as demo ${demo.label}`}
+                          aria-busy={isLoading}
                           className={`${demo.btn} text-white text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 flex-shrink-0 shadow-sm`}
                         >
                           {isLoading
@@ -261,29 +263,38 @@ export default function Login() {
               {/* Manual form */}
               <div className="space-y-3">
                 <input
+                  id="name-input"
                   type="text"
                   placeholder="Full name (required for new users)"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="input-field text-sm"
+                  aria-label="Full name"
+                  autoComplete="name"
                 />
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-vaida-text-muted select-none">+91</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-vaida-text-muted select-none" aria-hidden="true">+91</span>
                   <input
+                    id="phone-input"
                     type="tel"
                     placeholder="10-digit mobile number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     className="input-field pl-12 text-sm"
+                    aria-label="Mobile number (India +91)"
+                    autoComplete="tel"
+                    inputMode="numeric"
+                    maxLength={10}
                   />
                 </div>
 
                 {/* Role pills */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-2" role="group" aria-label="Select your role">
                   {(['patient', 'asha', 'doctor'] as UserRole[]).map((r) => (
                     <button
                       key={r}
                       onClick={() => setSelectedRole(r)}
+                      aria-pressed={selectedRole === r}
                       className={`py-2.5 rounded-xl text-xs font-semibold border-2 capitalize transition-all ${
                         selectedRole === r
                           ? 'border-vaida-teal bg-vaida-teal text-white shadow-sm'
@@ -298,14 +309,17 @@ export default function Login() {
                 <button
                   onClick={handleManualContinue}
                   disabled={phone.length < 10}
+                  aria-disabled={phone.length < 10}
                   className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
                 >
-                  Continue <ArrowRight size={15} />
+                  Continue <ArrowRight size={15} aria-hidden="true" />
                 </button>
               </div>
 
               {error && (
                 <motion.p
+                  role="alert"
+                  aria-live="assertive"
                   initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
                   className="text-xs text-urgency-red text-center bg-urgency-red-bg rounded-xl p-3 border border-red-100"
                 >
@@ -350,7 +364,7 @@ export default function Login() {
               </div>
 
               {/* OTP boxes */}
-              <div className="flex gap-2 justify-center">
+              <div className="flex gap-2 justify-center" role="group" aria-label="Enter 6-digit OTP">
                 {[0, 1, 2, 3, 4, 5].map((i) => (
                   <input
                     key={i}
@@ -359,6 +373,8 @@ export default function Login() {
                     inputMode="numeric"
                     maxLength={1}
                     value={otp[i] || ''}
+                    aria-label={`OTP digit ${i + 1}`}
+                    autoComplete={i === 0 ? 'one-time-code' : 'off'}
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/, '');
                       const arr = otp.split('');
@@ -382,7 +398,7 @@ export default function Login() {
               </div>
 
               {error && (
-                <p className="text-xs text-urgency-red text-center bg-urgency-red-bg rounded-xl p-3 border border-red-100">
+                <p role="alert" aria-live="assertive" className="text-xs text-urgency-red text-center bg-urgency-red-bg rounded-xl p-3 border border-red-100">
                   {error}
                 </p>
               )}
@@ -390,6 +406,8 @@ export default function Login() {
               <button
                 onClick={handleOtpLogin}
                 disabled={otp.length < 6 || loading}
+                aria-disabled={otp.length < 6 || loading}
+                aria-label="Verify OTP and log in"
                 className="btn-primary w-full flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 size={16} className="animate-spin" />}
