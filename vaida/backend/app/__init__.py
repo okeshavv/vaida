@@ -1,1 +1,0 @@
-"""VAIDA Backend Application Package."""
