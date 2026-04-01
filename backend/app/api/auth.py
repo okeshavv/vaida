@@ -117,6 +117,7 @@ def send_otp_endpoint(request: Request, req: LoginRequest, db: Session = Depends
 @limiter.limit("10/minute")
 def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     """Phone + OTP login."""
+    req.phone = req.phone.replace(" ", "")
     phone_h = hash_phone(req.phone)
     user = db.query(Patient).filter(Patient.phone_hash == phone_h).first()
 
