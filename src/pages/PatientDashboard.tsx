@@ -9,11 +9,13 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
-  Mic, Camera, MapPin, PhoneCall, ChevronRight,
-  Shield, Heart, AlertCircle, CheckCircle2, Clock, Wifi, WifiOff,
+  Camera, MapPin, PhoneCall, ChevronRight,
+  Shield, Heart, AlertCircle, Clock, Wifi, WifiOff,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { getPatientSessions } from '../api/client';
+import SmartHealthLog, { type SmartHealthEvent } from '../components/dashboard/SmartHealthLog';
+import SmartCtaCard from '../components/dashboard/SmartCtaCard';
 
 type TriageUrgency = 'GREEN' | 'AMBER' | 'RED';
 interface Session {
@@ -27,11 +29,37 @@ const FALLBACK: Session[] = [
   { id: '3', date: '2026-03-20', complaint: 'Chest Discomfort', urgency: 'RED', confidence: 0.94 },
 ];
 
-const urgencyConfig: Record<TriageUrgency, { icon: typeof CheckCircle2; bg: string; text: string; label: string }> = {
-  GREEN:  { icon: CheckCircle2,  bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', label: 'Self-Care' },
-  AMBER:  { icon: Clock,         bg: 'bg-amber-50  border-amber-200',   text: 'text-amber-700',   label: 'Follow Up' },
-  RED:    { icon: AlertCircle,   bg: 'bg-red-50    border-red-200',     text: 'text-red-700',     label: 'Urgent' },
+const severityByUrgency: Record<TriageUrgency, SmartHealthEvent['severity']> = {
+  GREEN: 'Low',
+  AMBER: 'Moderate',
+  RED: 'High',
 };
+
+const statusByUrgency: Record<TriageUrgency, SmartHealthEvent['status']> = {
+  GREEN: 'Resolved',
+  AMBER: 'Ongoing',
+  RED: 'Ongoing',
+};
+
+const emojiByUrgency: Record<TriageUrgency, string> = {
+  GREEN: '🟢',
+  AMBER: '🟠',
+  RED: '🔴',
+};
+
+const recommendationByUrgency: Record<TriageUrgency, string> = {
+  GREEN: 'Continue hydration, rest, and monitor for any returning symptoms.',
+  AMBER: 'Monitor closely and schedule a follow-up if symptoms do not improve in 24 hours.',
+  RED: 'Seek urgent medical care immediately and avoid delaying clinical assessment.',
+};
+
+function parseComplaint(complaint: string): { symptom: string; location: string } {
+  const parts = complaint.split(/\s*[—-]\s*/);
+  if (parts.length > 1) {
+    return { symptom: parts[0], location: parts.slice(1).join(' - ') };
+  }
+  return { symptom: complaint, location: 'General' };
+}
 
 export default function PatientDashboard() {
   const { t } = useTranslation();
@@ -48,6 +76,19 @@ export default function PatientDashboard() {
 
   const redCount = sessions.filter(s => s.urgency === 'RED').length;
   const amberCount = sessions.filter(s => s.urgency === 'AMBER').length;
+  const healthEvents: SmartHealthEvent[] = sessions.map((session) => {
+    const urgency = (session.urgency ?? 'GREEN') as TriageUrgency;
+    const complaint = parseComplaint(session.complaint);
+    return {
+      symptom: complaint.symptom,
+      location: complaint.location,
+      date: session.date,
+      severity: severityByUrgency[urgency],
+      recommendation: recommendationByUrgency[urgency],
+      status: statusByUrgency[urgency],
+      emoji: emojiByUrgency[urgency],
+    };
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50 via-white to-white pb-28">
@@ -110,25 +151,15 @@ export default function PatientDashboard() {
       </div>
 
       {/* ── Primary CTA: Start New Intake ───────────────────────── */}
-      <div className="px-5 -mt-6">
-        <motion.button
+      <div className="px-5 mt-6">
+        <motion.div
           initial={{ opacity: 0, y: 12, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ delay: 0.1, type: 'spring', stiffness: 300, damping: 24 }}
-          onClick={() => navigate('/intake')}
-          className="w-full bg-white shadow-xl shadow-teal-100 border border-teal-100 rounded-3xl p-5 flex items-center gap-4 hover:shadow-teal-200 active:scale-[0.98] transition-all duration-200"
+          className="w-full"
         >
-          <div className="w-14 h-14 rounded-2xl bg-teal-600 flex items-center justify-center shrink-0 shadow-lg shadow-teal-600/30">
-            <Mic size={26} className="text-white" />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="font-bold text-slate-800 text-base">How are you feeling?</p>
-            <p className="text-sm text-slate-500 mt-0.5">Tap to start voice symptom check</p>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center">
-            <ChevronRight size={18} className="text-teal-600" />
-          </div>
-        </motion.button>
+          <SmartCtaCard onClick={() => navigate('/intake')} />
+        </motion.div>
       </div>
 
       {/* ── Quick Actions Row ────────────────────────────────────── */}
@@ -162,33 +193,7 @@ export default function PatientDashboard() {
           </button>
         </div>
 
-        <div className="space-y-2.5">
-          {sessions.map((s, i) => {
-            const urg = (s.urgency ?? 'GREEN') as TriageUrgency;
-            const cfg = urgencyConfig[urg];
-            const Icon = cfg.icon;
-            return (
-              <motion.div
-                key={s.id}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 + i * 0.06 }}
-                onClick={() => navigate('/triage/' + s.id)}
-                className={`bg-white border rounded-2xl px-4 py-3.5 flex items-center gap-3 cursor-pointer hover:shadow-sm transition-shadow ${cfg.bg}`}
-              >
-                <Icon size={18} className={cfg.text} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-slate-800 truncate">{s.complaint}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{s.date}</p>
-                </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.text} bg-white/80 border`}>
-                  {cfg.label}
-                </span>
-                <ChevronRight size={15} className="text-slate-300 shrink-0" />
-              </motion.div>
-            );
-          })}
-        </div>
+        <SmartHealthLog events={healthEvents} />
       </div>
 
       {/* ── Disclaimer ───────────────────────────────────────────── */}
