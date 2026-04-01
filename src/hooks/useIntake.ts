@@ -64,6 +64,10 @@ export function useIntake() {
     }));
   }, []);
 
+  const setSelectedBodyParts = useCallback((parts: string[]) => {
+    setState((s) => ({ ...s, selectedBodyParts: parts }));
+  }, []);
+
   const setSymptoms = useCallback((symptoms: string[]) => {
     setState(s => ({ ...s, symptoms }));
   }, []);
@@ -143,6 +147,7 @@ export function useIntake() {
     giveConsent,
     setVoiceTranscript,
     toggleBodyPart,
+    setSelectedBodyParts,
     setSymptoms,
     setDuration,
     setSeverity,

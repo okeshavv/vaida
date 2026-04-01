@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,8 +7,18 @@ import {
   Mic, MicOff, Loader2, AlertCircle
 } from 'lucide-react';
 import { useIntake } from '../hooks/useIntake';
-import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
-import type { IntakeStep } from '../types';
+import type { IntakeStep, SupportedLanguage } from '../types';
+
+const SPEECH_LANG: Partial<Record<SupportedLanguage, string>> = {
+  en: 'en-US',
+  hi: 'hi-IN',
+  ta: 'ta-IN',
+  te: 'te-IN',
+  bn: 'bn-IN',
+  mr: 'mr-IN',
+  gu: 'gu-IN',
+  kn: 'kn-IN',
+};
 
 const slideVariants = {
   enter: (dir: number) => ({ x: dir > 0 ? 200 : -200, opacity: 0 }),
@@ -20,9 +30,11 @@ export default function IntakeFlow() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const intake = useIntake();
-  const voice = useVoiceRecorder();
   const [direction, setDirection] = useState(1);
-  const [manualSymptoms, setManualSymptoms] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechStartRef = useRef('');
 
   const handleNext = useCallback(() => {
     setDirection(1);
@@ -49,16 +61,71 @@ export default function IntakeFlow() {
     }
   }, [intake, navigate]);
 
-  const handleVoiceToggle = useCallback(async () => {
-    if (voice.isRecording) {
-      voice.stopRecording();
-      if (voice.audioBlob) {
-        await intake.processVoice(voice.audioBlob);
-      }
-    } else {
-      voice.startRecording();
+  const toggleListening = useCallback(() => {
+    const SpeechRecognitionCtor =
+      typeof window !== 'undefined'
+        ? window.SpeechRecognition || window.webkitSpeechRecognition
+        : undefined;
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
     }
-  }, [voice, intake]);
+
+    if (!SpeechRecognitionCtor) {
+      return;
+    }
+
+    speechStartRef.current = transcript;
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = SPEECH_LANG[intake.state.language] || 'en-US';
+
+    recognition.onresult = (event: SpeechRecognitionResultLike) => {
+      let sessionText = '';
+      for (let i = 0; i < event.results.length; i++) {
+        sessionText += event.results[i][0].transcript;
+      }
+      const next = speechStartRef.current + sessionText;
+      setTranscript(next);
+      intake.setVoiceTranscript(next);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }, [isListening, transcript, intake]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (intake.state.currentStep !== 'voice') {
+      recognitionRef.current?.abort();
+      setIsListening(false);
+    }
+  }, [intake.state.currentStep]);
+
+  useEffect(() => {
+    if (intake.state.currentStep === 'voice' && intake.state.voiceTranscript) {
+      setTranscript(intake.state.voiceTranscript);
+    }
+  }, [intake.state.currentStep]);
 
   const stepLabels: Record<IntakeStep, string> = {
     consent: t('intake.steps.consent'),
@@ -165,10 +232,10 @@ export default function IntakeFlow() {
                 <div className="flex flex-col items-center gap-6 py-6">
                   {/* Waveform */}
                   <div className="flex items-end gap-[3px] h-20 px-4">
-                    {(voice.isRecording ? voice.waveformData : Array(40).fill(0.05)).map((val, i) => (
+                    {(isListening ? Array(40).fill(0.4) : Array(40).fill(0.05)).map((val, i) => (
                       <motion.div
                         key={i}
-                        className={`w-1.5 rounded-full ${voice.isRecording ? 'bg-vaida-teal' : 'bg-vaida-bg2'}`}
+                        className={`w-1.5 rounded-full ${isListening ? 'bg-vaida-teal' : 'bg-vaida-bg2'}`}
                         animate={{ height: Math.max(4, val * 80) }}
                         transition={{ duration: 0.1 }}
                       />
@@ -178,21 +245,18 @@ export default function IntakeFlow() {
                   {/* Record Button */}
                   <motion.button
                     whileTap={{ scale: 0.9 }}
-                    onClick={handleVoiceToggle}
+                    onClick={toggleListening}
                     className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all ${
-                      voice.isRecording
+                      isListening
                         ? 'bg-urgency-red animate-recording'
                         : 'bg-vaida-teal hover:bg-vaida-teal-mid'
                     }`}
                   >
-                    {voice.isRecording ? <MicOff size={28} className="text-white" /> : <Mic size={28} className="text-white" />}
+                    {isListening ? <MicOff size={28} className="text-white" /> : <Mic size={28} className="text-white" />}
                   </motion.button>
                   <p className="text-sm font-medium text-vaida-text-muted">
-                    {voice.isRecording ? t('intake.voice.recording') : t('intake.voice.tapToRecord')}
+                    {isListening ? t('intake.voice.recording') : t('intake.voice.tapToRecord')}
                   </p>
-                  {voice.duration > 0 && (
-                    <p className="text-xs text-vaida-text-hint">{voice.duration}s</p>
-                  )}
                 </div>
 
                 {/* Transcript */}
@@ -208,10 +272,11 @@ export default function IntakeFlow() {
                   <p className="text-xs text-vaida-text-hint mb-3">{t('intake.voice.or')}</p>
                   <textarea
                     placeholder={t('intake.voice.typeManually')}
-                    value={manualSymptoms}
+                    value={transcript}
                     onChange={(e) => {
-                      setManualSymptoms(e.target.value);
-                      intake.setVoiceTranscript(e.target.value);
+                      const v = e.target.value;
+                      setTranscript(v);
+                      intake.setVoiceTranscript(v);
                     }}
                     className="input-field min-h-[80px] resize-none"
                   />
